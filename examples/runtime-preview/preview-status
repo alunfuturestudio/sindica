@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /usr/local/lib/sindica-preview/preview-common.sh
+
+ISSUE=""
+
+usage() {
+  cat <<'USAGE'
+Usage: preview status --issue <number>
+
+Prints saved preview metadata.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --issue) ISSUE="${2:?missing value for --issue}"; shift 2 ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ -z "$ISSUE" ]]; then
+  usage >&2
+  exit 2
+fi
+
+preview_require_issue "$ISSUE"
+META="$(preview_meta_path "$ISSUE")"
+
+if [[ ! -f "$META" ]]; then
+  echo "No preview found for issue #$ISSUE." >&2
+  exit 1
+fi
+
+jq . "$META"

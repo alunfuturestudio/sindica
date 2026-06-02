@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /usr/local/lib/sindica-preview/preview-common.sh
+
+MAX_AGE_SECONDS=$(( PREVIEW_TTL_HOURS * 3600 ))
+
+usage() {
+  cat <<'USAGE'
+Usage: preview gc [--max-age <hours>] [--max-age-minutes <minutes>]
+
+Stops expired previews. Expiration is based on each preview.json expiresAtEpoch
+field capped by the requested max age.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --max-age) MAX_AGE_SECONDS=$(( ${2:?missing value for --max-age} * 3600 )); shift 2 ;;
+    --max-age-minutes) MAX_AGE_SECONDS=$(( ${2:?missing value for --max-age-minutes} * 60 )); shift 2 ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+mkdir -p "$PREVIEW_ROOT"
+NOW="$(preview_now_epoch)"
+
+find "$PREVIEW_ROOT" -mindepth 2 -maxdepth 2 -name preview.json -print 2>/dev/null |
+  while IFS= read -r meta; do
+    issue="$(jq -r '.issue // empty' "$meta" 2>/dev/null || true)"
+    [[ -n "$issue" ]] || continue
+
+    expires="$(jq -r '.expiresAtEpoch // empty' "$meta" 2>/dev/null || true)"
+    mtime="$(stat -c %Y "$meta")"
+    age_expires=$(( mtime + MAX_AGE_SECONDS ))
+
+    if [[ -z "$expires" ]] || (( age_expires < expires )); then
+      expires="$age_expires"
+    fi
+
+    if (( NOW >= expires )); then
+      echo "Stopping expired preview for issue #$issue."
+      preview stop --issue "$issue" || true
+    fi
+  done
+
+echo "Preview GC complete."

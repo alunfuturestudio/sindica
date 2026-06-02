@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: preview <command> [options]
+
+Commands:
+  start    Start or refresh a local issue preview
+  stop     Stop a local issue preview
+  status   Show preview metadata
+  gc       Stop expired previews
+USAGE
+}
+
+COMMAND="${1:-}"
+if [[ -z "$COMMAND" ]]; then
+  usage >&2
+  exit 2
+fi
+shift
+
+case "$COMMAND" in
+  start) exec preview-start "$@" ;;
+  stop) exec preview-stop "$@" ;;
+  status) exec preview-status "$@" ;;
+  gc) exec preview-gc "$@" ;;
+  -h | --help | help) usage ;;
+  *)
+    echo "Unknown preview command: $COMMAND" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /usr/local/lib/sindica-preview/preview-common.sh
+
+ISSUE=""
+
+usage() {
+  cat <<'USAGE'
+Usage: preview stop --issue <number>
+
+Stops a preview and releases its port lock.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --issue) ISSUE="${2:?missing value for --issue}"; shift 2 ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ -z "$ISSUE" ]]; then
+  usage >&2
+  exit 2
+fi
+
+preview_require_issue "$ISSUE"
+
+META="$(preview_meta_path "$ISSUE")"
+PORT=""
+PID=""
+
+if [[ -f "$META" ]]; then
+  PORT="$(preview_read_json_field "$META" '.port')"
+  PID="$(preview_read_json_field "$META" '.pid')"
+fi
+
+if [[ -n "$PID" ]] && preview_process_alive "$PID"; then
+  kill -- "-$PID" 2>/dev/null || true
+  kill "$PID" 2>/dev/null || true
+  for _ in $(seq 1 10); do
+    preview_process_alive "$PID" || break
+    sleep 1
+  done
+  if preview_process_alive "$PID"; then
+    kill -9 -- "-$PID" 2>/dev/null || true
+    kill -9 "$PID" 2>/dev/null || true
+  fi
+fi
+
+if [[ -n "$PORT" ]]; then
+  preview_release_port_lock "$PORT"
+fi
+
+rm -rf "$(preview_dir "$ISSUE")"
+
+echo "Preview for issue #$ISSUE stopped."

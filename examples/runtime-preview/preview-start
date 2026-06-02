@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /usr/local/lib/sindica-preview/preview-common.sh
+
+ISSUE=""
+BRANCH=""
+WORKDIR="$PWD"
+TTL_HOURS="$PREVIEW_TTL_HOURS"
+RESTART=false
+
+usage() {
+  cat <<'USAGE'
+Usage: preview start --issue <number> [options]
+
+Starts or refreshes a project preview in the current worktree.
+
+Options:
+  --issue <number>      Issue number. Required.
+  --branch <name>       Branch name for metadata. Defaults to current branch.
+  --workdir <path>      Repository worktree. Defaults to current directory.
+  --ttl-hours <hours>   Preview lifetime. Defaults to PREVIEW_TTL_HOURS or 24.
+  --restart             Restart even if an existing preview looks healthy.
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --issue) ISSUE="${2:?missing value for --issue}"; shift 2 ;;
+    --branch) BRANCH="${2:?missing value for --branch}"; shift 2 ;;
+    --workdir) WORKDIR="${2:?missing value for --workdir}"; shift 2 ;;
+    --ttl-hours) TTL_HOURS="${2:?missing value for --ttl-hours}"; shift 2 ;;
+    --restart) RESTART=true; shift ;;
+    -h | --help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ -z "$ISSUE" ]]; then
+  usage >&2
+  exit 2
+fi
+
+preview_require_issue "$ISSUE"
+
+cd "$WORKDIR"
+WORKDIR="$(pwd)"
+
+if [[ -z "$BRANCH" ]]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+fi
+
+GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+META="$(preview_meta_path "$ISSUE")"
+
+if [[ -f "$META" ]]; then
+  OLD_PID="$(preview_read_json_field "$META" '.pid')"
+  OLD_PORT="$(preview_read_json_field "$META" '.port')"
+  OLD_COMMIT="$(preview_read_json_field "$META" '.gitCommit')"
+  if [[ "$RESTART" != true ]] &&
+    [[ "$OLD_COMMIT" == "$GIT_COMMIT" ]] &&
+    preview_process_alive "$OLD_PID" &&
+    preview_health_ok "$OLD_PORT"; then
+    preview_touch_meta "$ISSUE"
+    jq -r '"Preview already running: " + .url' "$META"
+    exit 0
+  fi
+  preview stop --issue "$ISSUE" || true
+fi
+
+PORT="$(preview_alloc_port "$ISSUE")"
+PREVIEW_DIR="$(preview_dir "$ISSUE")"
+LOG_DIR="$PREVIEW_DIR/logs"
+mkdir -p "$LOG_DIR"
+
+if [[ -n "${PREVIEW_INSTALL_COMMAND:-}" ]]; then
+  PORT="$PORT" bash -lc "$PREVIEW_INSTALL_COMMAND" >"$LOG_DIR/install.log" 2>&1
+fi
+
+if [[ -n "${PREVIEW_BUILD_COMMAND:-}" ]]; then
+  PORT="$PORT" bash -lc "$PREVIEW_BUILD_COMMAND" >"$LOG_DIR/build.log" 2>&1
+fi
+
+if [[ -n "${PREVIEW_MIGRATE_COMMAND:-}" ]]; then
+  PORT="$PORT" bash -lc "$PREVIEW_MIGRATE_COMMAND" >"$LOG_DIR/migrate.log" 2>&1
+fi
+
+if [[ -z "${PREVIEW_START_COMMAND:-}" ]]; then
+  echo "PREVIEW_START_COMMAND is required." >&2
+  preview_release_port_lock "$PORT"
+  exit 2
+fi
+
+setsid bash -lc '
+  set -euo pipefail
+  cd "$1"
+  export PORT="$2"
+  exec bash -lc "$3"
+' bash "$WORKDIR" "$PORT" "$PREVIEW_START_COMMAND" \
+  </dev/null >"$LOG_DIR/server.log" 2>&1 &
+
+PID="$!"
+
+HEALTH_OK=false
+for _ in $(seq 1 60); do
+  if preview_health_ok "$PORT"; then
+    HEALTH_OK=true
+    break
+  fi
+  if ! preview_process_alive "$PID"; then
+    echo "Preview server exited early. See $LOG_DIR/server.log" >&2
+    preview_release_port_lock "$PORT"
+    exit 1
+  fi
+  sleep 2
+done
+
+if [[ "$HEALTH_OK" != true ]]; then
+  echo "Preview server did not become healthy in time. See $LOG_DIR/server.log" >&2
+  kill "$PID" 2>/dev/null || true
+  preview_release_port_lock "$PORT"
+  exit 1
+fi
+
+NOW="$(preview_iso_now)"
+EXPIRES_EPOCH="$(preview_expires_epoch "$TTL_HOURS")"
+EXPIRES_AT="$(preview_iso_from_epoch "$EXPIRES_EPOCH")"
+URL="http://$PREVIEW_HOST:$PORT"
+
+jq -n \
+  --argjson issue "$ISSUE" \
+  --arg key "$(preview_key "$ISSUE")" \
+  --arg branch "$BRANCH" \
+  --arg gitCommit "$GIT_COMMIT" \
+  --arg workdir "$WORKDIR" \
+  --argjson port "$PORT" \
+  --argjson pid "$PID" \
+  --argjson processGroupId "$PID" \
+  --arg url "$URL" \
+  --arg createdAt "$NOW" \
+  --arg lastTouchedAt "$NOW" \
+  --arg expiresAt "$EXPIRES_AT" \
+  --argjson expiresAtEpoch "$EXPIRES_EPOCH" \
+  --arg logDir "$LOG_DIR" \
+  '{
+    issue: $issue,
+    key: $key,
+    branch: $branch,
+    gitCommit: $gitCommit,
+    workdir: $workdir,
+    port: $port,
+    pid: $pid,
+    processGroupId: $processGroupId,
+    url: $url,
+    createdAt: $createdAt,
+    lastTouchedAt: $lastTouchedAt,
+    expiresAt: $expiresAt,
+    expiresAtEpoch: $expiresAtEpoch,
+    logDir: $logDir
+  }' >"$META"
+
+echo "Preview ready: $URL"
+echo "Expires at: $EXPIRES_AT"

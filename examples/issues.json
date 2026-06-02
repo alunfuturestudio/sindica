@@ -1,0 +1,25 @@
+{
+  "issues": [
+    {
+      "id": "DEMO-1",
+      "title": "Fresh issue without phase",
+      "open": true,
+      "status": "TODO",
+      "labels": []
+    },
+    {
+      "id": "DEMO-2",
+      "title": "Refined issue ready for next phase",
+      "open": true,
+      "status": "In Review",
+      "labels": ["phase:triage"]
+    },
+    {
+      "id": "DEMO-3",
+      "title": "Paused issue",
+      "open": true,
+      "status": "TODO",
+      "labels": ["autopilot:pause"]
+    }
+  ]
+}
