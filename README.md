@@ -10,10 +10,10 @@ provider adapter.
 
 Sindica requires Node.js 20 or newer.
 
-Until Sindica is published to npm, install it from GitHub:
+Install it from npm:
 
 ```bash
-npm install --save-dev https://github.com/alunfuturestudio/sindica/archive/refs/heads/main.tar.gz
+npm install --save-dev sindica
 ```
 
 Then configure the current project:
