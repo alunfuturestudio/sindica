@@ -22,15 +22,18 @@ Then configure the current project:
 npx sindica config
 ```
 
-The config command creates the standard condo workflow, project-owned skills, a
-mock fixture, package scripts, a Docker Multica runtime, and a
-`README-post-config.md` file inside your project.
+The config command generates local files only: the standard condo workflow,
+project-owned skills, a mock fixture, `sindica/setup-state.json`, package
+scripts, a Docker Multica runtime, and a `README-post-config.md` file inside
+your project.
 
-After config finishes, the project is only configured locally. You must follow
-the generated `README-post-config.md`: validate the mock plan, ask the human to
-start the Docker Multica runtime with `MULTICA_TOKEN`, then run
-`sindica:doctor` and `sindica:deploy`. Deploy is the step that creates or
-updates labels, skills, agents, the router, autopilot, and trigger in Multica.
+After config finishes, Sindica setup is not complete. You must follow the
+generated `README-post-config.md` and `sindica/setup-state.json`: validate the
+mock plan, validate the mock run, ask the human to start the Docker Multica
+runtime with `MULTICA_TOKEN`, complete Codex device auth inside that runtime,
+choose the workspace, then run `sindica:doctor` and `sindica:deploy`. Deploy is
+the step that creates or updates labels, skills, agents, the router, autopilot,
+and trigger in Multica.
 
 ## Quick Check
 

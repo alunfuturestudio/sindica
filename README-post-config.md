@@ -13,6 +13,7 @@ runtime command, and repository paths are project-specific.
 ```text
 <project>.sindica.ts
 sindica/issues.fixture.json
+sindica/setup-state.json
 sindica/skills/condominio-alexo/SKILL.md
 sindica/skills/condominio-refinar/SKILL.md
 sindica/skills/condominio-prd/SKILL.md
@@ -30,6 +31,9 @@ docker/multica-runtime/README.md
 README-post-config.md
 ```
 
+`sindica/setup-state.json` is the machine-readable setup checklist. Agents
+should read it before claiming Sindica setup is finished.
+
 It also adds package scripts when `package.json` exists:
 
 ```json
@@ -45,12 +49,16 @@ It also adds package scripts when `package.json` exists:
 
 ## MUST DO Checklist
 
-1. MUST validate the mock workflow locally.
-2. MUST ask the human to start the Docker Multica runtime with a real
+1. MUST run `npm run sindica:plan`.
+2. MUST run `npm run sindica:run:mock`.
+3. MUST ask the human to start the Docker Multica runtime with a real
    `MULTICA_TOKEN`.
-3. MUST wait until the runtime is online and authenticated.
-4. MUST choose the correct `MULTICA_WORKSPACE_ID`.
-5. MUST run `sindica:doctor` and `sindica:deploy`.
+4. MUST complete `codex login --device-auth` inside that runtime when the
+   startup script prints the URL and code.
+5. MUST wait until the runtime is online and authenticated.
+6. MUST choose the correct `MULTICA_WORKSPACE_ID`.
+7. MUST run `sindica:doctor`.
+8. MUST run `sindica:deploy`.
 
 `sindica:deploy` creates or updates labels, skills, agents, the router agent,
 the router autopilot, and the schedule trigger. If deploy has not run, the
@@ -132,8 +140,12 @@ MULTICA_WORKSPACE_ID=... npm run sindica:deploy
 
 When an agent is asked to configure Sindica, the work is not complete until:
 
-1. The workflow, skills, fixture, and npm scripts exist.
+1. The workflow, skills, fixture, `sindica/setup-state.json`, and npm scripts
+   exist.
 2. `docker/multica-runtime/` exists.
-3. `sindica:doctor` and `sindica:deploy` delegate to Docker.
-4. `README-post-config.md` documents the exact runtime startup command.
-5. `npm run sindica:plan` succeeds.
+3. `npm run sindica:plan` succeeds.
+4. `npm run sindica:run:mock` succeeds.
+5. The Docker runtime has been started with `MULTICA_TOKEN`.
+6. Codex device auth has completed inside the Docker runtime.
+7. `sindica:doctor` and `sindica:deploy` delegate to Docker and both succeed.
+8. `README-post-config.md` documents the exact runtime startup command.

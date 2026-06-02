@@ -35,15 +35,43 @@ describe("configureProject", () => {
     });
 
     const output = log.mock.calls.map((call) => call.join(" ")).join("\n");
-    expect(output).toContain("MUST DO NEXT - configuration is not deployed yet");
+    expect(output).toContain("SINDICA SETUP IS NOT COMPLETE YET");
     expect(output).toContain("MUST ask the human to start the Docker Multica runtime");
+    expect(output).toContain("the human MUST complete that login");
     expect(output).toContain("MULTICA_TOKEN=mul_... docker/multica-runtime/start.sh");
     expect(output).toContain("MULTICA_WORKSPACE_ID=... npm run sindica:doctor");
     expect(output).toContain("MULTICA_WORKSPACE_ID=... npm run sindica:deploy");
     expect(output).toContain("Deploy creates or updates labels, skills, agents, the router agent, autopilot, and trigger.");
+    expect(output).toContain("Machine-readable setup state was written to sindica/setup-state.json.");
 
     const readme = await readFile(join(targetDir, "README-post-config.md"), "utf8");
     expect(readme).toContain("## MUST DO Checklist");
+    expect(readme).toContain("sindica/setup-state.json");
+    expect(readme).toContain("MUST run `npm run sindica:run:mock`");
+    expect(readme).toContain("MUST complete `codex login --device-auth`");
     expect(readme).toContain("agents and autopilot are not configured in Multica yet");
+
+    const setupState = JSON.parse(await readFile(join(targetDir, "sindica/setup-state.json"), "utf8")) as {
+      complete: boolean;
+      status: string;
+      nextRequiredStep: string;
+      steps: { id: string; complete: boolean; command: string }[];
+    };
+    expect(setupState.complete).toBe(false);
+    expect(setupState.status).toBe("local-files-generated");
+    expect(setupState.nextRequiredStep).toBe("mock-plan");
+    expect(setupState.steps.map((step) => step.id)).toEqual([
+      "local-files-generated",
+      "mock-plan",
+      "mock-run",
+      "runtime-started",
+      "codex-authenticated",
+      "workspace-selected",
+      "doctor-passed",
+      "deploy-passed",
+    ]);
+    expect(setupState.steps.find((step) => step.id === "local-files-generated")?.complete).toBe(true);
+    expect(setupState.steps.find((step) => step.id === "deploy-passed")?.complete).toBe(false);
+    expect(setupState.steps.find((step) => step.id === "codex-authenticated")?.command).toBe("codex login --device-auth");
   });
 });

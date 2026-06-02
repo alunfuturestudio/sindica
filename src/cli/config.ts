@@ -72,9 +72,12 @@ export async function configureProject(options: ConfigOptions): Promise<void> {
 }
 
 function printPostConfigInstructions(config: ProjectConfig): void {
-  console.log(`Sindica local files configured for ${config.projectName}.`);
+  console.log(`Sindica local files generated for ${config.projectName}.`);
   console.log("");
-  console.log("MUST DO NEXT - configuration is not deployed yet:");
+  console.log("SINDICA SETUP IS NOT COMPLETE YET.");
+  console.log("Agents, autopilot, and the schedule trigger do not exist in Multica until deploy succeeds.");
+  console.log("");
+  console.log("MUST DO NEXT:");
   console.log("");
   console.log("1. MUST validate the local mock workflow:");
   console.log("   npm run sindica:plan");
@@ -87,13 +90,15 @@ function printPostConfigInstructions(config: ProjectConfig): void {
   console.log(`     --device-name ${config.projectName}-runtime-1 \\`);
   console.log("     --cli-codex");
   console.log("");
+  console.log("   When the runtime prints a Codex device URL and code, the human MUST complete that login.");
+  console.log("");
   console.log("   If agents need to push branches or open PRs, use:");
   console.log("");
   console.log("   GITHUB_TOKEN=github_pat_... MULTICA_TOKEN=mul_... docker/multica-runtime/start.sh \\");
   console.log(`     --device-name ${config.projectName}-runtime-1 \\`);
   console.log("     --cli-codex");
   console.log("");
-  console.log("3. MUST deploy the real provider after the runtime is online.");
+  console.log("3. MUST deploy the real provider after the runtime is online and Codex-authenticated.");
   console.log("   First choose the workspace ID, for example:");
   console.log("");
   console.log("   docker compose -f docker/multica-runtime/docker-compose.yml run --rm runtime \\");
@@ -105,6 +110,7 @@ function printPostConfigInstructions(config: ProjectConfig): void {
   console.log("   MULTICA_WORKSPACE_ID=... npm run sindica:deploy");
   console.log("");
   console.log("Deploy creates or updates labels, skills, agents, the router agent, autopilot, and trigger.");
+  console.log("Machine-readable setup state was written to sindica/setup-state.json.");
   console.log("Read README-post-config.md for the same checklist and operational details.");
 }
 
@@ -194,6 +200,7 @@ async function writeProjectFiles(targetDir: string, config: ProjectConfig): Prom
 
   await writeFile(join(targetDir, config.configPath), workflowFile(config));
   await writeFile(join(targetDir, "sindica/issues.fixture.json"), issuesFixture(config));
+  await writeFile(join(targetDir, "sindica/setup-state.json"), setupStateFile(config));
 
   for (const skill of skills(config)) {
     const skillDir = join(targetDir, "sindica/skills", skill.slug);
@@ -538,6 +545,68 @@ function issuesFixture(config: ProjectConfig): string {
   }, null, 2)}\n`;
 }
 
+function setupStateFile(config: ProjectConfig): string {
+  return `${JSON.stringify({
+    version: 1,
+    projectName: config.projectName,
+    configPath: config.configPath,
+    baseBranch: config.baseBranch,
+    status: "local-files-generated",
+    complete: false,
+    nextRequiredStep: "mock-plan",
+    steps: [
+      {
+        id: "local-files-generated",
+        complete: true,
+        command: "npx sindica config",
+        description: "Sindica workflow, skills, fixture, package scripts, Docker runtime, README, and setup-state files were generated.",
+      },
+      {
+        id: "mock-plan",
+        complete: false,
+        command: "npm run sindica:plan",
+        description: "Validate that the generated workflow can load and route fixture issues.",
+      },
+      {
+        id: "mock-run",
+        complete: false,
+        command: "npm run sindica:run:mock",
+        description: "Validate that generated workflow actions can be applied by the mock provider.",
+      },
+      {
+        id: "runtime-started",
+        complete: false,
+        command: `MULTICA_TOKEN=mul_... docker/multica-runtime/start.sh --device-name ${config.projectName}-runtime-1 --cli-codex`,
+        description: "Start the Docker Multica runtime with a real token.",
+      },
+      {
+        id: "codex-authenticated",
+        complete: false,
+        command: "codex login --device-auth",
+        description: "Complete the Codex device login printed by the Docker runtime.",
+      },
+      {
+        id: "workspace-selected",
+        complete: false,
+        command: "docker compose -f docker/multica-runtime/docker-compose.yml run --rm runtime sh -lc 'multica workspace list --output json'",
+        description: "Choose the Multica workspace ID for this project.",
+      },
+      {
+        id: "doctor-passed",
+        complete: false,
+        command: "MULTICA_WORKSPACE_ID=... npm run sindica:doctor",
+        description: "Check real-provider connectivity through the Docker runtime.",
+      },
+      {
+        id: "deploy-passed",
+        complete: false,
+        command: "MULTICA_WORKSPACE_ID=... npm run sindica:deploy",
+        description: "Create or update labels, skills, agents, router agent, autopilot, and schedule trigger in Multica.",
+      },
+    ],
+  }, null, 2)}\n`;
+}
+
 function skills(config: ProjectConfig): { slug: string; content: string }[] {
   const checks = config.validationCommands.length > 0
     ? `\nRequired checks:\n\n\`\`\`bash\n${config.validationCommands.join("\n")}\n\`\`\`\n`
@@ -870,26 +939,35 @@ GITHUB_TOKEN=github_pat_... MULTICA_TOKEN=mul_... docker/multica-runtime/start.s
 function postConfigReadme(config: ProjectConfig): string {
   return `# Sindica Post-Config
 
-Sindica local files have been configured for this project.
+Sindica local files have been generated for this project.
 
-This project is not fully operational until the Docker runtime is started and
-the real Multica provider is deployed.
+Sindica setup is NOT complete yet. This project is not operational until the
+mock workflow is validated, the Docker runtime is started, Codex is
+authenticated inside that runtime, and the real Multica provider is deployed.
 
 Generated files:
 
 - \`${config.configPath}\`
 - \`sindica/issues.fixture.json\`
+- \`sindica/setup-state.json\`
 - \`sindica/skills/\`
 - \`docker/multica-runtime/\`
 
+The machine-readable checklist is \`sindica/setup-state.json\`. Agents should
+read it before claiming Sindica setup is finished.
+
 ## MUST DO Checklist
 
-1. MUST validate the mock workflow locally.
-2. MUST ask the human to start the Docker Multica runtime with a real
+1. MUST run \`npm run sindica:plan\`.
+2. MUST run \`npm run sindica:run:mock\`.
+3. MUST ask the human to start the Docker Multica runtime with a real
    \`MULTICA_TOKEN\`.
-3. MUST wait until the runtime is online and authenticated.
-4. MUST choose the correct \`MULTICA_WORKSPACE_ID\`.
-5. MUST run \`sindica:doctor\` and \`sindica:deploy\`.
+4. MUST complete \`codex login --device-auth\` inside that runtime when the
+   startup script prints the URL and code.
+5. MUST wait until the runtime is online and authenticated.
+6. MUST choose the correct \`MULTICA_WORKSPACE_ID\`.
+7. MUST run \`sindica:doctor\`.
+8. MUST run \`sindica:deploy\`.
 
 \`sindica:deploy\` creates or updates labels, skills, agents, the router agent,
 the router autopilot, and the schedule trigger. If deploy has not run, the
