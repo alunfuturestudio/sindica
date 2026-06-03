@@ -24,6 +24,11 @@ interface MulticaIssueLabel {
   name: string;
 }
 
+interface MulticaIssueRun {
+  id: string;
+  status?: string | null;
+}
+
 interface MulticaIssue {
   id: string;
   identifier?: string;
@@ -31,6 +36,7 @@ interface MulticaIssue {
   status: string;
   labels?: MulticaIssueLabel[];
   assignee_id?: string | null;
+  [key: string]: unknown;
 }
 
 interface MulticaIssueListResponse {
@@ -88,7 +94,7 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
   return {
     name: "multica",
     async listIssues() {
-      const issues: Issue[] = [];
+      const issues: MulticaIssue[] = [];
       const limit = 100;
       let offset = 0;
 
@@ -105,7 +111,7 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
           "json"
         );
 
-        issues.push(...response.issues.map(toIssue));
+        issues.push(...response.issues);
 
         if (!response.has_more) {
           break;
@@ -114,7 +120,8 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
         offset += response.limit ?? limit;
       }
 
-      return issues;
+      const busyIssues = await listBusyIssueIds(workspaceId, issues);
+      return issues.map((issue) => toIssue(issue, busyIssues.has(issue.id)));
     },
     async apply(plan: ActionPlan) {
       const labels = await listLabels(workspaceId);
@@ -618,11 +625,12 @@ async function upsertTrigger(
   );
 }
 
-function toIssue(issue: MulticaIssue): Issue {
+function toIssue(issue: MulticaIssue, busy = false): Issue {
   const converted: Issue = {
     id: issue.id,
     title: issue.title,
     open: issue.status !== "done",
+    busy,
     status: issue.status,
     labels: createLabels((issue.labels ?? []).map((label) => label.name)),
     raw: issue,
@@ -633,6 +641,112 @@ function toIssue(issue: MulticaIssue): Issue {
   }
 
   return converted;
+}
+
+const ACTIVE_RUN_STATUSES = new Set([
+  "in_progress",
+  "running",
+  "queued",
+  "pending",
+  "started",
+  "processing",
+]);
+
+async function listBusyIssueIds(
+  workspaceId: string | undefined,
+  issues: readonly MulticaIssue[]
+): Promise<Set<string>> {
+  const openIssues = issues.filter((issue) => issue.status !== "done");
+  const busy = await Promise.all(
+    openIssues.map(async (issue) => ({
+      id: issue.id,
+      busy: hasEmbeddedActiveRun(issue) || await hasActiveRun(workspaceId, issue.id),
+    }))
+  );
+
+  return new Set(busy.filter((issue) => issue.busy).map((issue) => issue.id));
+}
+
+async function hasActiveRun(
+  workspaceId: string | undefined,
+  issueId: string
+): Promise<boolean> {
+  const runs = await multicaJson<MulticaIssueRun[]>(
+    workspaceId,
+    "issue",
+    "runs",
+    issueId,
+    "--output",
+    "json"
+  );
+
+  return runs.some((run) => isActiveRunStatus(run.status));
+}
+
+function hasEmbeddedActiveRun(issue: MulticaIssue): boolean {
+  const directStatuses = [
+    issue.task_status,
+    issue.current_task_status,
+    issue.active_task_status,
+    issue.execution_status,
+    issue.run_status,
+  ];
+
+  if (directStatuses.some((status) => isActiveRunStatus(status))) {
+    return true;
+  }
+
+  return containsActiveRun(issue, [], new Set<object>());
+}
+
+function containsActiveRun(
+  value: unknown,
+  path: readonly string[],
+  seen: Set<object>
+): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsActiveRun(item, path, seen));
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const context = [...path, ...keys].join(".");
+  const isTaskContext = /(task|execution|run|job)/i.test(context);
+
+  if (isTaskContext) {
+    if (isActiveRunStatus(record.status)) {
+      return true;
+    }
+
+    if (record.in_progress === true || record.is_active === true) {
+      return true;
+    }
+  }
+
+  return Object.entries(record).some(([key, entry]) =>
+    containsActiveRun(entry, [...path, key], seen)
+  );
+}
+
+function isActiveRunStatus(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  return ACTIVE_RUN_STATUSES.has(normalizeStatus(value));
+}
+
+function normalizeStatus(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
 async function applyAction(

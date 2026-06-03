@@ -14,6 +14,7 @@ export interface Issue {
   title: string;
   open: boolean;
   status: string;
+  busy?: boolean;
   labels: IssueLabels;
   assignee?: string;
   url?: string;

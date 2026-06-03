@@ -16,6 +16,10 @@ export function evaluatePipeline(
   const sortedRules = [...pipeline.rules].sort((a, b) => a.priority - b.priority);
 
   for (const issue of issues) {
+    if (issue.busy) {
+      continue;
+    }
+
     const matchingRules = sortedRules.filter((rule) => rule.match(issue));
 
     if (matchingRules.length === 0) {
