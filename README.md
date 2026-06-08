@@ -35,6 +35,15 @@ choose the workspace, then run `sindica:doctor` and `sindica:deploy`. Deploy is
 the step that creates or updates labels, skills, agents, the router, autopilot,
 and trigger in Multica.
 
+When the Codex token in the Docker runtime expires, run:
+
+```bash
+npm run sindica:reauth:codex
+```
+
+This logs Codex out inside the persisted runtime volume, then starts
+`codex login --device-auth` again.
+
 ## Quick Check
 
 ```bash

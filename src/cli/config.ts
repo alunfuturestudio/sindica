@@ -235,6 +235,7 @@ async function updatePackageScripts(targetDir: string, config: ProjectConfig): P
     "sindica:run:mock": `sindica run ${config.configPath} --provider mock --fixture sindica/issues.fixture.json`,
     "sindica:doctor": `docker/multica-runtime/sindica.sh doctor ${config.configPath} --provider multica`,
     "sindica:deploy": `docker/multica-runtime/sindica.sh deploy ${config.configPath} --provider multica`,
+    "sindica:reauth:codex": "docker/multica-runtime/sindica.sh reauth codex",
   };
 
   await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -856,13 +857,27 @@ COMMAND="\${1:-run}"
 if [[ $# -gt 0 ]]; then shift; fi
 
 case "$COMMAND" in
-  plan | run | deploy | doctor) ;;
+  plan | run | deploy | doctor | reauth) ;;
   -h | --help | help)
     echo "Usage: sindica-run <plan|run|deploy|doctor> [sindica args...]"
+    echo "       sindica-run reauth codex"
     exit 0
     ;;
   *) echo "Unknown sindica-run command: $COMMAND" >&2; exit 2 ;;
 esac
+
+if [[ "$COMMAND" == "reauth" ]]; then
+  target="\${1:-}"
+  if [[ "$target" != "codex" ]]; then
+    echo "Usage: sindica-run reauth codex" >&2
+    exit 2
+  fi
+
+  echo "Removing stored Codex credentials from \${CODEX_HOME:-$HOME/.codex}."
+  codex logout || true
+  echo "Starting Codex device login. Open the printed URL in your browser and enter the displayed code."
+  exec codex login --device-auth
+fi
 
 REPO_URL="\${SINDICA_REPO_URL:-}"
 REF="\${SINDICA_REF:-${config.baseBranch}}"
@@ -933,6 +948,15 @@ GITHUB_TOKEN=github_pat_... MULTICA_TOKEN=mul_... docker/multica-runtime/start.s
   --device-name ${config.projectName}-runtime-1 \\
   --cli-codex
 \`\`\`
+
+When the Codex token expires, reauthorize the same persisted Docker volume:
+
+\`\`\`bash
+npm run sindica:reauth:codex
+\`\`\`
+
+That command runs \`codex logout\` and then \`codex login --device-auth\`
+inside the runtime container, replacing the old credentials.
 `;
 }
 
@@ -1006,6 +1030,15 @@ GITHUB_TOKEN=github_pat_... MULTICA_TOKEN=mul_... docker/multica-runtime/start.s
 
 Keep \`MULTICA_TOKEN\`, \`MULTICA_WORKSPACE_ID\`, and \`GITHUB_TOKEN\` out of
 tracked files.
+
+When the Codex token expires, reauthorize the same persisted Docker volume:
+
+\`\`\`bash
+npm run sindica:reauth:codex
+\`\`\`
+
+That command runs \`codex logout\` and then \`codex login --device-auth\`
+inside the runtime container, replacing the old credentials.
 
 ## Deploy
 

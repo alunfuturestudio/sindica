@@ -49,7 +49,20 @@ describe("configureProject", () => {
     expect(readme).toContain("sindica/setup-state.json");
     expect(readme).toContain("MUST run `npm run sindica:run:mock`");
     expect(readme).toContain("MUST complete `codex login --device-auth`");
+    expect(readme).toContain("npm run sindica:reauth:codex");
     expect(readme).toContain("agents and autopilot are not configured in Multica yet");
+
+    const packageJson = JSON.parse(await readFile(join(targetDir, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts["sindica:reauth:codex"]).toBe(
+      "docker/multica-runtime/sindica.sh reauth codex"
+    );
+
+    const sindicaRun = await readFile(join(targetDir, "docker/multica-runtime/sindica-run"), "utf8");
+    expect(sindicaRun).toContain("sindica-run reauth codex");
+    expect(sindicaRun).toContain("codex logout || true");
+    expect(sindicaRun).toContain("exec codex login --device-auth");
 
     const setupState = JSON.parse(await readFile(join(targetDir, "sindica/setup-state.json"), "utf8")) as {
       complete: boolean;

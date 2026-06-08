@@ -42,7 +42,8 @@ It also adds package scripts when `package.json` exists:
     "sindica:plan": "sindica plan <config> --provider mock --fixture sindica/issues.fixture.json",
     "sindica:run:mock": "sindica run <config> --provider mock --fixture sindica/issues.fixture.json",
     "sindica:doctor": "docker/multica-runtime/sindica.sh doctor <config> --provider multica",
-    "sindica:deploy": "docker/multica-runtime/sindica.sh deploy <config> --provider multica"
+    "sindica:deploy": "docker/multica-runtime/sindica.sh deploy <config> --provider multica",
+    "sindica:reauth:codex": "docker/multica-runtime/sindica.sh reauth codex"
   }
 }
 ```
@@ -109,6 +110,15 @@ The startup script:
 
 Keep `MULTICA_TOKEN`, `MULTICA_WORKSPACE_ID`, and `GITHUB_TOKEN` out of tracked
 files.
+
+When the Codex token expires, reauthorize the same persisted Docker volume:
+
+```bash
+npm run sindica:reauth:codex
+```
+
+That command runs `codex logout` and then `codex login --device-auth` inside the
+runtime container, replacing the old credentials.
 
 ## Real Provider
 

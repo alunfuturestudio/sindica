@@ -1,6 +1,6 @@
 {
   "name": "sindica",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Deterministic workflow router for AI-agent issue pipelines.",
   "type": "module",
   "main": "./dist/index.js",
