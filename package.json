@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "sindica": "./dist/cli.js"
+    "sindica": "dist/cli.js"
   },
   "files": [
     "dist",
