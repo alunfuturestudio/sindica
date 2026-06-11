@@ -44,6 +44,31 @@ describe("evaluatePipeline", () => {
     ]);
   });
 
+  test("skips issues marked as busy", () => {
+    const pipeline = definePipeline({
+      name: "test",
+      router: {
+        name: "Test Router",
+        schedule: "* * * * *",
+        timezone: "UTC",
+      },
+      conflictPolicy: "fail",
+      rules: [
+        {
+          id: "triage",
+          priority: 10,
+          match: (issue) => issue.status === "TODO",
+          actions: [addLabel("phase:triage"), assignAgent("Refiner")],
+        },
+      ],
+    });
+
+    const plan = evaluatePipeline(pipeline, [fakeIssue({ id: "A", busy: true, status: "TODO" })]);
+
+    expect(plan.conflicts).toHaveLength(0);
+    expect(plan.planned).toHaveLength(0);
+  });
+
   test("reports conflicts by default", () => {
     const pipeline = definePipeline({
       name: "test",
